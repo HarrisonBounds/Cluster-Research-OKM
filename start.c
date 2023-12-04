@@ -230,11 +230,10 @@ int main(int argc, char *argv[])
     const char* filenames[] = { "phase1_data_sets/ecoli.txt", "phase1_data_sets/glass.txt", "phase1_data_sets/iris_bezdek.txt",  "phase1_data_sets/yeast.txt"};
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
 
-    // Data_Set* data_set = load_data_set(filenames[2]);
-    // print_data_set(data_set);
-
     for (int i = 0; i < filenamesLength; i++){
-        load_data_set(filenames[i]);
+        Data_Set* data_set = load_data_set(filenames[i]);
+        print_data_set(data_set);
+        free_data_set(data_set);
     }
 
     printf("Done");
