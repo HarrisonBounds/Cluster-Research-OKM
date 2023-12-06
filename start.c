@@ -3,18 +3,24 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-
+#include <math.h>
 
 typedef struct
 {
  double **data;   /* Attribute data [N x D]                 */
  int num_points;  /* Number of points {> 0}                 */
  int num_dims;    /* Number of attributes {> 0}             */
- int num_classes; /* Number of classes {>= 0}               */
- int *class;      /* Class membership of each point [N x 1] */
+ int num_categories; /* Number of categories {>= 0}               */
+ int *category;      /* Class membership of each point [N x 1] */
 } Data_Set;
 
+typedef struct {
+  double *center; 
+  int size;       
+} Cluster;
+
 #define MAX_CHAR 32
+#define MAX_DIST 195075
 
 //To allocate memory for the 'double **data' variable, you need the following function:
 double **
@@ -40,15 +46,15 @@ alloc_double_2d ( const int num_points, const int num_dims )
 }
 
 Data_Set *
-alloc_data_set ( const int num_points, const int num_dims, const int num_classes )
+alloc_data_set ( const int num_points, const int num_dims, const int num_categories )
 {
  Data_Set *data_set;
 
- if ( num_points <= 0 || num_dims <= 0 || num_classes < 0 )
+ if ( num_points <= 0 || num_dims <= 0 || num_categories < 0 )
   {
    fprintf ( stderr, "Number of points (%d) must be > 0\n", num_points );
    fprintf ( stderr, "Number of attributes (%d) must be > 0\n", num_dims );
-   fprintf ( stderr, "Number of classes (%d) must be >= 0\n", num_classes );
+   fprintf ( stderr, "Number of categories (%d) must be >= 0\n", num_categories );
    abort ( );
   }
 
@@ -56,21 +62,19 @@ alloc_data_set ( const int num_points, const int num_dims, const int num_classes
 
  data_set->num_points = num_points;
  data_set->num_dims = num_dims;
- data_set->num_classes = num_classes;
+ data_set->num_categories = num_categories;
 
  data_set->data = alloc_double_2d ( num_points, num_dims );
 
- data_set->class = NULL;
+ data_set->category = NULL;
 
- if ( 0 < num_classes )
+ if ( 0 < num_categories )
   {
-   data_set->class = ( int * ) malloc ( num_points * sizeof ( int ) );
+   data_set->category = ( int * ) malloc ( num_points * sizeof ( int ) );
   }
 
  return data_set;
 }
-
-
 
 void
 free_double_2d ( double **data )
@@ -89,9 +93,9 @@ free_data_set ( Data_Set *data_set )
   {
    free_double_2d ( data_set->data );
 
-   if ( data_set->class != NULL )
+   if ( data_set->category != NULL )
     {
-     free ( data_set->class );
+     free ( data_set->category );
     }
 
    free ( data_set );
@@ -122,17 +126,16 @@ print_data_set ( const Data_Set *data_set )
   }
 }
 
-
 Data_Set *
 load_data_set ( const char *filename )
 {
- bool have_class_labels = false;
+ bool have_cat_labels = false;
  char *buf;
  char *str;
  int ip, id;
  int num_points = 0;
  int num_dims = 0;
- int num_classes = 0;
+ int num_categories = 0;
  int buf_size;
  int label;
  int num_values;
@@ -147,32 +150,32 @@ load_data_set ( const char *filename )
    abort ( );
   }
 
- num_values = fscanf ( fp, "%d %d %d\n", &num_points, &num_dims, &num_classes );
+ num_values = fscanf ( fp, "%d %d %d\n", &num_points, &num_dims, &num_categories );
  if ( num_values != 3 )
   {
    fprintf ( stderr, "Error reading file '%s' line 1:\n", filename );
-   fprintf ( stderr, "Expected 3 integers (# points, #attributes, #classes), found %d !\n", num_values );
+   fprintf ( stderr, "Expected 3 integers (# points, #attributes, #categories), found %d !\n", num_values );
    abort ( );
   }
 
- if ( num_points <= 0 || num_dims <= 0 || num_classes < 0 )
+ if ( num_points <= 0 || num_dims <= 0 || num_categories < 0 )
   {
    fprintf ( stderr, "Error reading file '%s' line 1:\n", filename );
    fprintf ( stderr, "Number of points (%d) must be > 0\n", num_points );
    fprintf ( stderr, "Number of attributes (%d) must be > 0\n", num_dims );
-   fprintf ( stderr, "Number of classes (%d) must be >= 0\n", num_classes );
+   fprintf ( stderr, "Number of categories (%d) must be >= 0\n", num_categories );
    abort ( );
   }
 
- if ( 0 < num_classes )
+ if ( 0 < num_categories )
   {
    /* Last column contains class labels */
-   have_class_labels = true;
+   have_cat_labels = true;
    num_dims--;
   }
 
  /* Allocate */
- data_set = alloc_data_set ( num_points, num_dims, num_classes );
+ data_set = alloc_data_set ( num_points, num_dims, num_categories );
 
  buf_size = num_dims * MAX_CHAR;
  buf = ( char * ) malloc ( buf_size * sizeof ( char ) );
@@ -197,24 +200,24 @@ load_data_set ( const char *filename )
     }
 
    /* Line contains fewer than NUM_DIMS attributes or class label is missing */
-   if ( id != num_dims || ( have_class_labels && str == NULL ) )
+   if ( id != num_dims || ( have_cat_labels && str == NULL ) )
     {
      fprintf ( stderr, "Error reading file '%s' line %d (expected %d values, found %d)!\n", filename, ip, num_dims, id );
      abort ( );
     }
    
-   if ( have_class_labels )
+   if ( have_cat_labels )
     {
      /* Last attribute is the class label */
      label = atoi ( str );
 
-     if ( num_classes <= label || label < 0 )
+     if ( num_categories <= label || label < 0 )
       {
-       fprintf ( stderr, "Class label (%d) must be in [%d,%d]!\n", label, 0, num_classes - 1 );
+       fprintf ( stderr, "Class label (%d) must be in [%d,%d]!\n", label, 0, num_categories - 1 );
        abort ( );
       }
 
-     data_set->class[ip] = label;
+     data_set->category[ip] = label;
     }
   }
 
@@ -225,18 +228,176 @@ load_data_set ( const char *filename )
  return data_set;
 }
 
-int main(int argc, char *argv[])
+/* Reset a given set of clusters */
+
+Cluster*
+reset_centers(Cluster* clusters, const int numClusters)
 {
-    const char* filenames[] = { "phase1_data_sets/ecoli.txt", "phase1_data_sets/glass.txt", "phase1_data_sets/iris_bezdek.txt",  "phase1_data_sets/yeast.txt"};
+	for (int i = 0; i < numClusters; i++)
+	{
+    clusters[i].size = 0.0;
+	}
+
+	return clusters;
+}
+
+double 
+sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
+{
+    double dist = 0.0;
+
+    for (int i = 0; i < num_dims; i++)
+    {
+        dist += (vec_b[i] - vec_a[i]) * (vec_b[i] - vec_a[i]);
+    }
+
+    return dist;
+}
+
+/* Jancey Algorithm */
+void
+lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *numIters, double *mse)
+{
+	int numChanges, minIndex;
+  double minDist, dist;
+
+  // Array to keep track of the number of points assigned to each cluster
+  Cluster *temp = (Cluster *)malloc(numClusters * sizeof( Cluster ));
+
+  *numIters = 0;
+
+	do
+	{
+		numChanges = 0;
+		*mse = 0.0;
+
+    reset_centers(temp, numClusters); // Reset cluster sizes
+
+		//reset_centers(temp, numColors);
+
+		for (int i = 0; i < data_set->num_points; i++)
+		{
+
+			minDist = MAX_DIST;
+			minIndex = 0;
+
+			for (int j = 0; j < data_set->num_dims; j++)
+			{
+				dist = sqr_euc_dist(clusters[j].center, data_set->data[i], data_set->num_dims);
+				if (dist < minDist)
+				{
+					minDist = dist;
+					minIndex = j;
+				}
+			}
+
+      clusters[minIndex].size++;
+      for (int d = 0; d < data_set->num_dims; d++)
+      {
+        clusters[minIndex].center[d] += data_set->data[i][d];
+      }
+      
+
+			*mse += minDist;
+		}
+
+     // Update cluster centers by calculating means
+        for (int j = 0; j < numClusters; j++) {
+            if (temp[j].size > 0) {
+                for (int d = 0; d < data_set->num_dims; d++) {
+                    clusters[j].center[d] /= temp[j].size; // Compute mean as new cluster center
+                }
+            }
+        }
+
+		
+		(*numIters)++;
+
+		//cout << "Iteration " << *numIters << ": SSE = " << *sse << " [" << "# changes = " << numChanges << "]" << endl;
+
+	} while (numChanges != 0);
+
+
+	free ( temp );
+
+}
+
+Cluster *
+maximin(const Data_Set *data_set, const int numClusters)
+	{	
+
+		Cluster *clusters = ( Cluster * ) malloc ( numClusters * sizeof ( Cluster ) );
+    double *d = ( double * ) malloc ( numClusters * sizeof ( double ) );
+    double *distances = (double *)malloc(data_set->num_points * sizeof(double));
+
+    // Randomly initialize the first cluster's center from the dataset
+    clusters[0].center = d;
+
+		for (int d = 0; d < data_set->num_dims; d++) {
+        // Initialize the center of the first cluster using the first data point
+        clusters[0].center[d] = data_set->data[0][d];
+    }
+    clusters[0].size = 0;
+
+
+    // Calculate initial distances
+    for (int i = 0; i < data_set->num_points; i++) {
+        distances[i] = sqr_euc_dist(data_set->data[i], clusters[0].center, data_set->num_dims);
+    }
+    
+		// Find the farthest points as initial centers
+    for (int k = 1; k < numClusters; k++) {
+        int farthest_index = 0;
+        double max_dist = -1.0;
+
+        for (int i = 0; i < data_set->num_points; i++) {
+            if (distances[i] > max_dist) {
+                farthest_index = i;
+                max_dist = distances[i];
+            }
+        }
+
+        // Assign the farthest point as the next cluster's center
+        clusters[k].center = (double *)malloc(data_set->num_dims * sizeof(double));
+        for (int d = 0; d < data_set->num_dims; d++) {
+            clusters[k].center[d] = data_set->data[farthest_index][d];
+        }
+        clusters[k].size = 0;
+
+        // Recalculate distances using the new center
+        for (int i = 0; i < data_set->num_points; i++) {
+            double dist = sqr_euc_dist(data_set->data[i], clusters[k].center, data_set->num_dims);
+            distances[i] = fmin(dist, distances[i]);
+        }
+    }
+      free(d);
+			return clusters;
+
+	}
+
+
+int 
+main(int argc, char *argv[])
+{
+    const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/ionosphere.txt", "data/iris_bezdek.txt",  "data/yeast.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt", "data/yeast.txt" };
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
+    const int numClusters = 64;
+    Cluster *initCenters;
+    int iters;
+    double mse;
 
     for (int i = 0; i < filenamesLength; i++){
         Data_Set* data_set = load_data_set(filenames[i]);
         print_data_set(data_set);
+        initCenters = maximin(data_set, numClusters);
+        lkm(data_set, initCenters, numClusters, &iters, &mse);
         free_data_set(data_set);
     }
+
+  
 
     printf("Done");
 
     return 0;
 }
+
