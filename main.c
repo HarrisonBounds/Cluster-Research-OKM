@@ -228,18 +228,29 @@ load_data_set ( const char *filename )
  return data_set;
 }
 
-/* Reset a given set of clusters */
 
-Cluster*
-reset_centers(Cluster* clusters, const int numClusters)
+void
+reset_double_2d ( double **data, const int num_points, const int num_dims )
 {
-	for (int i = 0; i < numClusters; i++)
-	{
-    clusters[i].size = 0.0;
-	}
-
-	return clusters;
+ memset ( data[0], 0, num_points * num_dims * sizeof ( double ) );
 }
+
+/* Reset clusters */
+void
+reset_data_set ( const Data_Set *data_set )
+{
+ /*
+ memset ( data_set->data[0], 0, 
+          data_set->num_points * data_set->num_dims * sizeof ( double ) );
+  */
+ reset_double_2d ( data_set->data, data_set->num_points, data_set->num_dims );
+
+ if ( data_set->category != NULL )
+  {
+   memset ( data_set->category, 0, data_set->num_points * sizeof ( int ) );
+  }
+}
+
 
 double 
 sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
@@ -258,11 +269,13 @@ sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
 void
 lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *numIters, double *mse)
 {
-	int numChanges, minIndex;
+
+	int numChanges, minIndex, size;
   double minDist, dist;
 
   // Array to keep track of the number of points assigned to each cluster
-  Cluster *temp = (Cluster *)malloc(numClusters * sizeof( Cluster ));
+  Cluster *temp = (Cluster *) malloc (numClusters * sizeof( Cluster ));
+  int *member = ( int * ) calloc ( data_set->num_points, sizeof ( int ) );
 
   *numIters = 0;
 
@@ -271,17 +284,25 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 		numChanges = 0;
 		*mse = 0.0;
 
-    reset_centers(temp, numClusters); // Reset cluster sizes
+    reset_data_set(data_set); // Reset data set
 
-		//reset_centers(temp, numColors);
+    // //Initialize temp clusters
+    // for (int j = 0; j < numClusters; j++)
+    // {
+    //   for(int k = 0; k < data_set->num_dims; k++)
+    //   {
+    //     temp[j].center[k] = 0.0;
+    //   }
+    //   temp[j].size = 0;
+    // }
 
 		for (int i = 0; i < data_set->num_points; i++)
 		{
-
+      
 			minDist = MAX_DIST;
 			minIndex = 0;
 
-			for (int j = 0; j < data_set->num_dims; j++)
+			for (int j = 0; j < numClusters; j++)
 			{
 				dist = sqr_euc_dist(clusters[j].center, data_set->data[i], data_set->num_dims);
 				if (dist < minDist)
@@ -291,24 +312,40 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 				}
 			}
 
-      clusters[minIndex].size++;
-      for (int d = 0; d < data_set->num_dims; d++)
+      //Assignment
+      for (int k = 0; k < data_set->num_dims; k++)
       {
-        clusters[minIndex].center[d] += data_set->data[i][d];
-      }
-      
+        temp[minIndex].center[k] += data_set->data[i][k];
+      } 
+
+      temp[minIndex].size += 1; 
+
+      if (minIndex != member[i])
+			{
+				numChanges += 1;
+				member[i] = minIndex;
+			}
 
 			*mse += minDist;
 		}
+    
 
-     // Update cluster centers by calculating means
-        for (int j = 0; j < numClusters; j++) {
-            if (temp[j].size > 0) {
-                for (int d = 0; d < data_set->num_dims; d++) {
-                    clusters[j].center[d] /= temp[j].size; // Compute mean as new cluster center
-                }
-            }
-        }
+    //Update
+    for (int j = 0; j < numClusters; j++) 
+    {
+
+      size = temp[j].size;
+
+      if (size != 0) 
+      {
+        for (int k = 0; k < data_set->num_dims; k++)
+        {
+            clusters[j].center[k] = temp[j].center[k] / size;
+        }       
+        
+                
+      }
+    }
 
 		
 		(*numIters)++;
@@ -393,8 +430,6 @@ main(int argc, char *argv[])
         lkm(data_set, initCenters, numClusters, &iters, &mse);
         free_data_set(data_set);
     }
-
-  
 
     printf("Done");
 
