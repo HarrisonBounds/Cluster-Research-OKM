@@ -14,10 +14,6 @@ typedef struct
  int *category;      /* Class membership of each point [N x 1] */
 } Data_Set;
 
-typedef struct {
-  double *center; 
-  int size;       
-} Cluster;
 
 #define MAX_CHAR 32
 #define MAX_DIST 195075
@@ -267,14 +263,13 @@ sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
 
 /* Jancey Algorithm */
 void
-lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *numIters, double *mse)
+lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* mse)
 {
-
 	int numChanges, minIndex, size;
   double minDist, dist;
 
   // Array to keep track of the number of points assigned to each cluster
-  Cluster *temp = (Cluster *) malloc (numClusters * sizeof( Cluster ));
+  Data_Set *temp = (Data_Set *) malloc (numClusters * sizeof( Data_Set ));
   int *member = ( int * ) calloc ( data_set->num_points, sizeof ( int ) );
 
   *numIters = 0;
@@ -284,17 +279,7 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 		numChanges = 0;
 		*mse = 0.0;
 
-    reset_data_set(data_set); // Reset data set
-
-    // //Initialize temp clusters
-    // for (int j = 0; j < numClusters; j++)
-    // {
-    //   for(int k = 0; k < data_set->num_dims; k++)
-    //   {
-    //     temp[j].center[k] = 0.0;
-    //   }
-    //   temp[j].size = 0;
-    // }
+    reset_data_set(temp); // Reset data set
 
 		for (int i = 0; i < data_set->num_points; i++)
 		{
@@ -304,7 +289,7 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 
 			for (int j = 0; j < numClusters; j++)
 			{
-				dist = sqr_euc_dist(clusters[j].center, data_set->data[i], data_set->num_dims);
+				dist = sqr_euc_dist(clusters[i].data[j], data_set->data[j], data_set->num_dims); //Which two vectors should I pass in?
 				if (dist < minDist)
 				{
 					minDist = dist;
@@ -312,18 +297,19 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 				}
 			}
 
+      
+
       //Assignment
       for (int k = 0; k < data_set->num_dims; k++)
       {
-        temp[minIndex].center[k] += data_set->data[i][k];
+        temp[minIndex].data[k][k] += data_set->data[i][k];
       } 
-
-      temp[minIndex].size += 1; 
+      temp[minIndex].num_points += 1; 
 
       if (minIndex != member[i])
 			{
 				numChanges += 1;
-				member[i] = minIndex;
+				data_set->category[i] = minIndex;
 			}
 
 			*mse += minDist;
@@ -334,13 +320,13 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
     for (int j = 0; j < numClusters; j++) 
     {
 
-      size = temp[j].size;
+      size = temp[j].num_points;
 
       if (size != 0) 
       {
         for (int k = 0; k < data_set->num_dims; k++)
         {
-            clusters[j].center[k] = temp[j].center[k] / size;
+            clusters[j].data[k][k] = temp[j].data[k][k] / size; //Is this how to access the correct center?
         }       
         
                 
@@ -359,58 +345,34 @@ lkm(const Data_Set* data_set, Cluster* clusters, const int numClusters, int *num
 
 }
 
-Cluster *
+Data_Set*
 maximin(const Data_Set *data_set, const int numClusters)
 	{	
-
-		Cluster *clusters = ( Cluster * ) malloc ( numClusters * sizeof ( Cluster ) );
+		Data_Set *cluster = ( Data_Set * ) malloc ( numClusters * sizeof ( Data_Set ) );
     double *d = ( double * ) malloc ( numClusters * sizeof ( double ) );
-    double *distances = (double *)malloc(data_set->num_points * sizeof(double));
+    double *sums = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
+    Data_Set *centroids = ( Data_Set * ) malloc ( data_set->num_dims * sizeof ( Data_Set ) );
 
-    // Randomly initialize the first cluster's center from the dataset
-    clusters[0].center = d;
+    /*Select the first center arbitrarily*/
+		for(int i = 0; i < data_set->num_points; i++)
+    {
+			for(int k = 0; k < data_set->num_dims; i++)
+      {
+        sums[k] += data_set->data[i][k];
+      }
+		}
 
-		for (int d = 0; d < data_set->num_dims; d++) {
-        // Initialize the center of the first cluster using the first data point
-        clusters[0].center[d] = data_set->data[0][d];
-    }
-    clusters[0].size = 0;
-
-
-    // Calculate initial distances
-    for (int i = 0; i < data_set->num_points; i++) {
-        distances[i] = sqr_euc_dist(data_set->data[i], clusters[0].center, data_set->num_dims);
-    }
-    
-		// Find the farthest points as initial centers
-    for (int k = 1; k < numClusters; k++) {
-        int farthest_index = 0;
-        double max_dist = -1.0;
-
-        for (int i = 0; i < data_set->num_points; i++) {
-            if (distances[i] > max_dist) {
-                farthest_index = i;
-                max_dist = distances[i];
-            }
+    for(int i = 0; i < data_set->num_points; i++)
+        {
+          for(int k = 0; k < data_set->num_dims; i++)
+          {
+            centroids->data[i][k] = sums[k] / data_set->num_points;
+          }
         }
+  
 
-        // Assign the farthest point as the next cluster's center
-        clusters[k].center = (double *)malloc(data_set->num_dims * sizeof(double));
-        for (int d = 0; d < data_set->num_dims; d++) {
-            clusters[k].center[d] = data_set->data[farthest_index][d];
-        }
-        clusters[k].size = 0;
 
-        // Recalculate distances using the new center
-        for (int i = 0; i < data_set->num_points; i++) {
-            double dist = sqr_euc_dist(data_set->data[i], clusters[k].center, data_set->num_dims);
-            distances[i] = fmin(dist, distances[i]);
-        }
-    }
-      free(d);
-			return clusters;
-
-	}
+}
 
 
 int 
@@ -419,7 +381,7 @@ main(int argc, char *argv[])
     const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/ionosphere.txt", "data/iris_bezdek.txt",  "data/yeast.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt", "data/yeast.txt" };
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
     const int numClusters = 64;
-    Cluster *initCenters;
+    Data_Set *initCenters;
     int iters;
     double mse;
 
