@@ -351,7 +351,10 @@ maximin(const Data_Set *data_set, const int numClusters)
 		Data_Set *cluster = ( Data_Set * ) malloc ( numClusters * sizeof ( Data_Set ) );
     double *d = ( double * ) malloc ( numClusters * sizeof ( double ) );
     double *sums = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
-    Data_Set *centroids = ( Data_Set * ) malloc ( data_set->num_dims * sizeof ( Data_Set ) );
+    Data_Set *center = ( Data_Set * ) malloc ( data_set->num_dims * sizeof ( Data_Set ) );
+    double max_dist;
+    int next_cluster;
+    double dist;
 
     /*Select the first center arbitrarily*/
 		for(int i = 0; i < data_set->num_points; i++)
@@ -362,15 +365,53 @@ maximin(const Data_Set *data_set, const int numClusters)
       }
 		}
 
-    for(int i = 0; i < data_set->num_points; i++)
-        {
-          for(int k = 0; k < data_set->num_dims; i++)
-          {
-            centroids->data[i][k] = sums[k] / data_set->num_points;
-          }
-        }
-  
+    /* First center is given by the centroid of the data set */
+    for(int k = 0; k < data_set->num_dims; k++)
+    {
+      center->data[0][k] = sums[k] / data_set->num_points;
+    }
 
+    /*Set the first center to the calculated centroid*/
+    cluster[0] = center;                                  //Not sure what to set cluster to
+    cluster[0].num_points = 0;
+  
+    /*Set distances to 'infinity'*/
+		for(int i = 0; i < data_set->num_points; i++){
+			d[i] = MAX_DIST;
+		}
+
+    /*Calculate the remaining centers*/
+    for (int j = 0 + 1; j < numClusters; j++)
+    {
+      max_dist = -MAX_DIST;
+      next_cluster = 0;
+
+      for (int i = 0; i < data_set->num_points; i++)
+      {
+        for (int k = 0; k < data_set->num_dims; k++)
+        {
+          dist = sqr_euc_dist(cluster[j-1].data[k], data_set->data[k], data_set->num_dims); //Confused on whether to use i, j, or k 
+        }
+
+        if (dist < d[i])
+        {
+          d[i] = dist;
+        }
+
+        if (max_dist < d[i])
+        {
+          max_dist = d[i];
+          next_cluster = i;
+        }
+      }
+
+      cluster[j].data = data_set->data[next_cluster]; //Confused on where to index at, after cluster or after data?
+      cluster[j].num_points = 0;
+
+    }
+
+    free( d );
+    return cluster;
 
 }
 
