@@ -265,11 +265,12 @@ sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
 void
 lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* mse)
 {
-	int numChanges, minIndex, size;
+  
+	int numChanges, minIndex, mySize;
   double minDist, dist;
 
-  // Array to keep track of the number of points assigned to each cluster
-  Data_Set *temp = (Data_Set *) malloc (numClusters * sizeof( Data_Set ));
+  Data_Set *temp = alloc_data_set(numClusters, data_set->num_dims, 0);
+  int *size = (int *) malloc ( numClusters * sizeof ( int ) );
   int *member = ( int * ) calloc ( data_set->num_points, sizeof ( int ) );
 
   *numIters = 0;
@@ -278,7 +279,7 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 	{
 		numChanges = 0;
 		*mse = 0.0;
-
+    memset( size, 0, numClusters * sizeof( int )); //reset the sizes
     reset_data_set(temp); // Reset data set
 
 		for (int i = 0; i < data_set->num_points; i++)
@@ -289,7 +290,7 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 
 			for (int j = 0; j < numClusters; j++)
 			{
-				dist = sqr_euc_dist(clusters[i].data[j], data_set->data[j], data_set->num_dims); //Which two vectors should I pass in?
+				dist = sqr_euc_dist(clusters->data[j], data_set->data[i], data_set->num_dims); 
 				if (dist < minDist)
 				{
 					minDist = dist;
@@ -298,48 +299,49 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 			}
 
       
-
       //Assignment
       for (int k = 0; k < data_set->num_dims; k++)
       {
-        temp[minIndex].data[k][k] += data_set->data[i][k];
+        temp->data[minIndex][k] += data_set->data[i][k];
       } 
-      temp[minIndex].num_points += 1; 
+  
+      size[minIndex] += 1;
 
+      
       if (minIndex != member[i])
 			{
 				numChanges += 1;
-				data_set->category[i] = minIndex;
+				member[i] = minIndex;
+
 			}
 
 			*mse += minDist;
 		}
     
-
-    //Update
+    
+    
+    //Update via batch k-means
     for (int j = 0; j < numClusters; j++) 
     {
+      
+      mySize = temp[j].num_points;
 
-      size = temp[j].num_points;
-
-      if (size != 0) 
+      if (mySize != 0) 
       {
         for (int k = 0; k < data_set->num_dims; k++)
         {
-            clusters[j].data[k][k] = temp[j].data[k][k] / size; //Is this how to access the correct center?
+            clusters->data[j][k] = temp->data[j][k] / mySize; 
         }       
         
                 
       }
     }
 
-		
 		(*numIters)++;
 
 		//cout << "Iteration " << *numIters << ": SSE = " << *sse << " [" << "# changes = " << numChanges << "]" << endl;
 
 	} while (numChanges != 0);
-
 
 	free ( temp );
 
@@ -348,18 +350,17 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 Data_Set*
 maximin(const Data_Set *data_set, const int numClusters)
 	{	
-		Data_Set *cluster = ( Data_Set * ) malloc ( numClusters * sizeof ( Data_Set ) );
-    double *d = ( double * ) malloc ( numClusters * sizeof ( double ) );
+    
+    double *d = ( double * ) malloc ( data_set->num_points * sizeof ( double ) );
     double *sums = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
-    Data_Set *center = ( Data_Set * ) malloc ( data_set->num_dims * sizeof ( Data_Set ) );
-    double max_dist;
-    int next_cluster;
-    double dist;
+    Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
+    int next_center;
+    double dist, maxDist;
 
     /*Select the first center arbitrarily*/
 		for(int i = 0; i < data_set->num_points; i++)
     {
-			for(int k = 0; k < data_set->num_dims; i++)
+			for(int k = 0; k < data_set->num_dims; k++)
       {
         sums[k] += data_set->data[i][k];
       }
@@ -370,48 +371,43 @@ maximin(const Data_Set *data_set, const int numClusters)
     {
       center->data[0][k] = sums[k] / data_set->num_points;
     }
-
-    /*Set the first center to the calculated centroid*/
-    cluster[0] = center;                                  //Not sure what to set cluster to
-    cluster[0].num_points = 0;
-  
+    
     /*Set distances to 'infinity'*/
-		for(int i = 0; i < data_set->num_points; i++){
+		for(int i = 0; i < data_set->num_points; i++)
+    {
 			d[i] = MAX_DIST;
 		}
-
+    
     /*Calculate the remaining centers*/
     for (int j = 0 + 1; j < numClusters; j++)
     {
-      max_dist = -MAX_DIST;
-      next_cluster = 0;
+      maxDist = -MAX_DIST;
+      next_center = 0;
 
       for (int i = 0; i < data_set->num_points; i++)
       {
-        for (int k = 0; k < data_set->num_dims; k++)
-        {
-          dist = sqr_euc_dist(cluster[j-1].data[k], data_set->data[k], data_set->num_dims); //Confused on whether to use i, j, or k 
-        }
+        
+        dist = sqr_euc_dist(center->data[j-1], data_set->data[i], data_set->num_dims);
+       
 
         if (dist < d[i])
         {
           d[i] = dist;
         }
 
-        if (max_dist < d[i])
+        if (maxDist < d[i])
         {
-          max_dist = d[i];
-          next_cluster = i;
+          maxDist = d[i];
+          next_center = i;
         }
       }
 
-      cluster[j].data = data_set->data[next_cluster]; //Confused on where to index at, after cluster or after data?
-      cluster[j].num_points = 0;
+      center->data[j] = data_set->data[next_center];
 
     }
 
     free( d );
-    return cluster;
+    return center;
 
 }
 
@@ -419,7 +415,7 @@ maximin(const Data_Set *data_set, const int numClusters)
 int 
 main(int argc, char *argv[])
 {
-    const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/ionosphere.txt", "data/iris_bezdek.txt",  "data/yeast.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt", "data/yeast.txt" };
+    const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/iris_bezdek.txt",  "data/yeast.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt"};
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
     const int numClusters = 64;
     Data_Set *initCenters;
@@ -428,13 +424,13 @@ main(int argc, char *argv[])
 
     for (int i = 0; i < filenamesLength; i++){
         Data_Set* data_set = load_data_set(filenames[i]);
-        print_data_set(data_set);
         initCenters = maximin(data_set, numClusters);
         lkm(data_set, initCenters, numClusters, &iters, &mse);
         free_data_set(data_set);
+        printf("Done processing file: %s\n", filenames[i]);
     }
 
-    printf("Done");
+    printf("FINAL");
 
     return 0;
 }
