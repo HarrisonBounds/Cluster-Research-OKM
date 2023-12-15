@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
+
 
 typedef struct
 {
@@ -285,7 +287,7 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 		for (int i = 0; i < data_set->num_points; i++)
 		{
       
-			minDist = MAX_DIST;
+			minDist = DBL_MAX;
 			minIndex = 0;
 
 			for (int j = 0; j < numClusters; j++)
@@ -343,7 +345,9 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 
 	} while (numChanges != 0);
 
-	free ( temp );
+	free_data_set ( temp );
+  free( size );
+  free ( member );
 
 }
 
@@ -360,6 +364,8 @@ maximin(const Data_Set *data_set, const int numClusters)
     /*Select the first center arbitrarily*/
 		for(int i = 0; i < data_set->num_points; i++)
     {
+      /*Set distances to 'infinity'*/
+      d[i] = DBL_MAX;
 			for(int k = 0; k < data_set->num_dims; k++)
       {
         sums[k] += data_set->data[i][k];
@@ -372,16 +378,11 @@ maximin(const Data_Set *data_set, const int numClusters)
       center->data[0][k] = sums[k] / data_set->num_points;
     }
     
-    /*Set distances to 'infinity'*/
-		for(int i = 0; i < data_set->num_points; i++)
-    {
-			d[i] = MAX_DIST;
-		}
     
     /*Calculate the remaining centers*/
     for (int j = 0 + 1; j < numClusters; j++)
     {
-      maxDist = -MAX_DIST;
+      maxDist = -DBL_MAX;
       next_center = 0;
 
       for (int i = 0; i < data_set->num_points; i++)
@@ -407,6 +408,7 @@ maximin(const Data_Set *data_set, const int numClusters)
     }
 
     free( d );
+    free ( sums );
     return center;
 
 }

@@ -55,5 +55,19 @@
   "C_Cpp_Runner.useLeakSanitizer": false,
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
-  "C_Cpp_Runner.msvcSecureNoWarnings": false
+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
+  "files.associations": {
+    "cmath": "c",
+    "cstdarg": "c",
+    "cstdint": "c",
+    "cstdio": "c",
+    "cstdlib": "c",
+    "cwchar": "c",
+    "cwctype": "c",
+    "exception": "c",
+    "type_traits": "c",
+    "limits": "c",
+    "*.tcc": "c",
+    "typeinfo": "c"
+  }
 }
