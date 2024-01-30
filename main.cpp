@@ -1,10 +1,14 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <cstdlib>
+#include <iostream>
+#include <random>
 #include <errno.h>
 #include <string.h>
 #include <math.h>
 #include <float.h>
+#include <time.h>
 
 
 typedef struct
@@ -265,7 +269,7 @@ sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
 
 /* Jancey Algorithm */
 void
-lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* mse)
+lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* sse)
 {
   
 	int numChanges, minIndex, mySize;
@@ -275,12 +279,13 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
   int *size = (int *) malloc ( numClusters * sizeof ( int ) );
   int *member = ( int * ) calloc ( data_set->num_points, sizeof ( int ) );
 
+
   *numIters = 0;
 
 	do
 	{
 		numChanges = 0;
-		*mse = 0.0;
+		*sse = 0.0;
     memset( size, 0, numClusters * sizeof( int )); //reset the sizes
     reset_data_set(temp); // Reset data set
 
@@ -317,16 +322,19 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 
 			}
 
-			*mse += minDist;
+			*sse += minDist;
 		}
-    
+
+		(*numIters)++;
+    printf("Iteration %d: SSE = %f: Num Changes = %d\n", *numIters, *sse, numChanges);
+	if ( numChanges == 0 ) break;
     
     
     //Update via batch k-means
     for (int j = 0; j < numClusters; j++) 
     {
       
-      mySize = temp[j].num_points;
+      mySize = size[j];
 
       if (mySize != 0) 
       {
@@ -338,17 +346,34 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
                 
       }
     }
-
-		(*numIters)++;
-
-		//cout << "Iteration " << *numIters << ": SSE = " << *sse << " [" << "# changes = " << numChanges << "]" << endl;
-
-	} while (numChanges != 0);
+	} while ( true );
 
 	free_data_set ( temp );
   free( size );
   free ( member );
 
+}
+
+Data_Set*
+rand_sel(const Data_Set *data_set, const int numClusters)
+{
+    int rand_int;
+    Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> distribution(0, data_set->num_points - 1);
+    
+
+    for (int j = 0; j < numClusters; j++)
+    {
+     rand_int = distribution(gen);
+     for(int k = 0; k < data_set->num_dims; k++) 
+     {
+      center->data[j][k] = data_set->data[rand_int][k];
+     }
+    }
+
+    return center;
 }
 
 Data_Set*
@@ -360,6 +385,8 @@ maximin(const Data_Set *data_set, const int numClusters)
     Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
     int next_center;
     double dist, maxDist;
+    
+    for(int k = 0; k < data_set->num_dims; k++) sums[k] = 0.0;
 
     /*Select the first center arbitrarily*/
 		for(int i = 0; i < data_set->num_points; i++)
@@ -417,19 +444,24 @@ maximin(const Data_Set *data_set, const int numClusters)
 int 
 main(int argc, char *argv[])
 {
-    const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/iris_bezdek.txt",  "data/yeast.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt"};
+   const char* filenames[] = { "data/ecoli.txt", "data/glass.txt", "data/ionosphere.txt", "data/iris_bezdek.txt",  "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt", "data/yeast.txt"};
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
-    const int numClusters = 64;
+    const int numClusters[] = { 8, 6, 2, 3, 6, 26, 7, 4, 3, 10 };
     Data_Set *initCenters;
-    int iters;
-    double mse;
+    int numIters;
+    double sse;
 
+    srand ( time ( NULL ) );
+        
     for (int i = 0; i < filenamesLength; i++){
+        printf("Filename: %s, Number of Clusters: %d\n", filenames[i], numClusters[i]);
         Data_Set* data_set = load_data_set(filenames[i]);
-        initCenters = maximin(data_set, numClusters);
-        lkm(data_set, initCenters, numClusters, &iters, &mse);
+        //initCenters = maximin(data_set, numClusters[i]);
+        initCenters = rand_sel(data_set, numClusters[i]);
+        lkm(data_set, initCenters, numClusters[i], &numIters, &sse);
+        free_data_set(initCenters);
         free_data_set(data_set);
-        printf("Done processing file: %s\n", filenames[i]);
+        printf("Done processing file: %s\n\n", filenames[i]);
     }
 
     printf("FINAL");
