@@ -257,13 +257,13 @@ reset_data_set ( const Data_Set *data_set )
 double 
 sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
 {
-    double dist = 0.0;
+    double delta, dist = 0.0;
 
     for (int i = 0; i < num_dims; i++)
     {
-        dist += (vec_b[i] - vec_a[i]) * (vec_b[i] - vec_a[i]);
+        delta = vec_b[i] - vec_a[i];
+        dist += delta * delta;
     }
-
     return dist;
 }
 
@@ -356,21 +356,26 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 
 Data_Set* kmeanspp_init(const Data_Set *data_set, const int numClusters)
 {
-    double dist = 0.0;
+    double dist;
     double *distances = (double *) malloc ( data_set->num_points * sizeof ( double ) );
     double dist_sum = 0.0;
+    int i, j;
     Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
 
     //Select random data to use as initial center for K-Means++ clustering
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> rand_index(0, data_set->num_points - 1);
-  
+
+    //definte a stochastic threshold r_thresh
+    std::uniform_real_distribution<> rand_interval(0, 1);
+    double r_thresh = dist_sum * rand_interval(gen);
+
     //Copy the data point from data_set as the first centerS
     memcpy(centers->data[0], data_set->data[rand_index(gen)], data_set->num_dims * sizeof(double));
 
     /*Assign L2 distance from first center to each datum*/
-    for (int i = 0; i < data_set->num_points; i++)
+    for (i = 0; i < data_set->num_points; i++)
     {
         dist = sqr_euc_dist(centers->data[0], data_set->data[i], data_set->num_dims);
 
@@ -380,14 +385,9 @@ Data_Set* kmeanspp_init(const Data_Set *data_set, const int numClusters)
     }
 
     //Assign remaining centers
-    for (int j = 1; j < numClusters; j++)
+    for (j = 1; j < numClusters; j++)
     {
-        // //definte a stochastic threshold r_thresh
-        std::uniform_real_distribution<> rand_interval(0, 1);
-        double r_thresh = dist_sum * rand_interval(gen);
-
         //find next center
-        int i = 0;
         for (i = 0; i < data_set->num_points; i++)
         {
             if (r_thresh < distances[i])
@@ -404,28 +404,25 @@ Data_Set* kmeanspp_init(const Data_Set *data_set, const int numClusters)
 
         if (j == numClusters - 1) //finished populating centers
         {
-            printf("Iteration %d: SSE = %f\n", j, dist_sum);
             free( distances );
             return centers;
         }
-        
-        dist = 0.0;
 
         //Update minimum distances
-        for (int i = 0; i < data_set->num_points; i++)
+        for (i = 0; i < data_set->num_points; i++)
         {
             dist = sqr_euc_dist(centers->data[j], data_set->data[i], data_set->num_dims);
             
             if (dist < distances[i])
             {
-                dist_sum = dist_sum - (distances[i] - dist);
+                dist_sum -= (distances[i] - dist);
                 distances[i] = dist;
             }
         }
-        printf("Iteration %d: SSE = %f\n", j, dist_sum);
     }
 
     free ( distances );
+    return centers;
 
 }
 
@@ -532,8 +529,8 @@ main(int argc, char *argv[])
         printf("Filename: %s, Number of Clusters: %d\n", filenames[i], numClusters[i]);
         Data_Set* data_set = load_data_set(filenames[i]);
         //initCenters = maximin(data_set, numClusters[i]);
-        initCenters = rand_sel(data_set, numClusters[i]);
-        kmeanspp_init(data_set, numClusters[i]);
+        initCenters = kmeanspp_init(data_set, numClusters[i]);
+        lkm(data_set, initCenters, numClusters[i], &numIters, &sse);
         free_data_set(initCenters);
         free_data_set(data_set);
         printf("Done processing file: %s\n\n", filenames[i]);
