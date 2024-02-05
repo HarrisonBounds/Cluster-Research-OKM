@@ -267,9 +267,35 @@ sqr_euc_dist( const double *vec_a, const double *vec_b, const int num_dims)
     return dist;
 }
 
-/* Jancey Algorithm */
+double
+calc_sse(const Data_Set* data_set, Data_Set* clusters, const int numClusters)
+{
+  double minDist, dist, sse = 0.0;
+  int minIndex;
+  for (int i = 0; i < data_set->num_points; i++)
+		{
+      
+			minDist = DBL_MAX;
+			minIndex = 0;
+
+			for (int j = 0; j < numClusters; j++)
+			{
+				dist = sqr_euc_dist(clusters->data[j], data_set->data[i], data_set->num_dims); 
+				if (dist < minDist)
+				{
+					minDist = dist;
+					minIndex = j;
+				}
+			}
+      sse += minDist;
+    }
+    return sse;
+}
+
+
+/* Batch k-means Algorithm */
 void
-lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* sse)
+bkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* numIters, double* sse)
 {
   
 	int numChanges, minIndex, mySize;
@@ -354,6 +380,56 @@ lkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
 
 }
 
+
+/*Online K-Means Algorithm*/
+Data_Set*
+okm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, const double lr_exp)
+{
+  int minIndex, mySize, rand_data_point;
+  double minDist, dist, learningRate, sse;
+
+  int *size = (int *) malloc ( numClusters * sizeof ( int ) );
+
+  memset( size, 0, numClusters * sizeof( int )); //reset the sizes
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> rand_index(0, data_set->num_points - 1);
+
+  for (int i = 0 ; i < data_set->num_points; i++)
+  {
+    rand_data_point = rand_index(gen);
+    
+    minDist = DBL_MAX;
+    minIndex = 0;
+    
+    for (int j = 0; j < numClusters; j++)
+    {
+
+      dist = sqr_euc_dist(clusters->data[j], data_set->data[rand_data_point], data_set->num_dims);
+      if (dist < minDist)
+      {
+        minDist = dist;
+        minIndex = j;
+      }
+    }
+
+    mySize = ++size[minIndex];
+    
+    learningRate = pow(mySize, -lr_exp);
+    
+    for (int k = 0; k < data_set->num_dims; k++)
+    {
+      clusters->data[minIndex][k] += learningRate * ( data_set->data[rand_data_point][k] - clusters->data[minIndex][k]);
+    } 
+
+  } 
+
+  free( size );
+
+  return clusters;
+}
+
 Data_Set* kmeanspp_init(const Data_Set *data_set, const int numClusters)
 {
     double dist;
@@ -426,6 +502,19 @@ Data_Set* kmeanspp_init(const Data_Set *data_set, const int numClusters)
 
 }
 
+Data_Set*
+kmeanspp_okm_init(const Data_Set *data_set, const int numClusters, const double lr_exp)
+{
+  Data_Set *initCenters;
+  Data_Set *centers;
+
+  initCenters = kmeanspp_init(data_set, numClusters);
+  centers = okm(data_set, initCenters, numClusters, lr_exp);
+
+  return centers;
+}
+
+  
 Data_Set*
 rand_sel(const Data_Set *data_set, const int numClusters)
 {
@@ -520,18 +609,22 @@ main(int argc, char *argv[])
     int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
     const int numClusters[] = { 8, 6, 2, 3, 6, 26, 7, 4, 3, 10 };
     Data_Set *initCenters;
+    Data_Set* centers;
     int numIters;
     double sse;
+    const double lr_exp = 0.5;
 
     srand ( time ( NULL ) );
-        
+
+
+
     for (int i = 0; i < filenamesLength; i++){
         printf("Filename: %s, Number of Clusters: %d\n", filenames[i], numClusters[i]);
         Data_Set* data_set = load_data_set(filenames[i]);
-        //initCenters = maximin(data_set, numClusters[i]);
-        initCenters = kmeanspp_init(data_set, numClusters[i]);
-        lkm(data_set, initCenters, numClusters[i], &numIters, &sse);
-        free_data_set(initCenters);
+        centers = kmeanspp_okm_init(data_set, numClusters[i], lr_exp);
+        sse = calc_sse(data_set, centers, numClusters[i]);
+        printf("SSE = %f\n", sse);
+        free_data_set(centers);
         free_data_set(data_set);
         printf("Done processing file: %s\n\n", filenames[i]);
     }
