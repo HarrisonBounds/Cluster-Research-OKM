@@ -544,29 +544,15 @@ maximin(const Data_Set *data_set, const int numClusters)
 	{	
     
     double *d = ( double * ) malloc ( data_set->num_points * sizeof ( double ) );
-    double *sums = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
     Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
     int next_center;
     double dist, maxDist;
     
-    for(int k = 0; k < data_set->num_dims; k++) sums[k] = 0.0;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> rand_index(0, data_set->num_points - 1);
 
-    /*Select the first center arbitrarily*/
-		for(int i = 0; i < data_set->num_points; i++)
-    {
-      /*Set distances to 'infinity'*/
-      d[i] = DBL_MAX;
-			for(int k = 0; k < data_set->num_dims; k++)
-      {
-        sums[k] += data_set->data[i][k];
-      }
-		}
-
-    /* First center is given by the centroid of the data set */
-    for(int k = 0; k < data_set->num_dims; k++)
-    {
-      centers->data[0][k] = sums[k] / data_set->num_points;
-    }
+    memcpy(centers->data[0], data_set->data[rand_index(gen)], data_set->num_dims * sizeof(double));
     
     
     /*Calculate the remaining centers*/
@@ -598,7 +584,6 @@ maximin(const Data_Set *data_set, const int numClusters)
     }
 
     free( d );
-    free ( sums );
     return centers;
 
 }
@@ -706,6 +691,84 @@ kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, int* numIters,
 }
 
 Data_Set*
+rep_rand_sel_okm(const Data_Set *data_set, const int numClusters, const int numReps, double* best_sse, const double lr_exp)
+{
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = rand_sel(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+
+    sse = calc_sse(data_set, temp_centers, numClusters);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+    free_data_set(temp_centers);
+  }
+  
+  return centers;
+}
+
+Data_Set*
+rep_maximin_okm(const Data_Set *data_set, const int numClusters, const int numReps, double* best_sse, const double lr_exp)
+{
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = maximin(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+
+    sse = calc_sse(data_set, temp_centers, numClusters);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
+rep_kmeanspp_okm(const Data_Set *data_set, const int numClusters, const int numReps, double* best_sse, const double lr_exp)
+{
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = kmeanspp(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+
+    sse = calc_sse(data_set, temp_centers, numClusters);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
 rep_rand_sel_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse)
 {
   
@@ -733,6 +796,149 @@ rep_rand_sel_bkm(const Data_Set *data_set, const int numClusters, const int numR
   return centers;
 }
 
+Data_Set*
+rep_maximin_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse)
+{
+  
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+  int numIters = 0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = maximin(data_set, numClusters);
+    bkm(data_set, temp_centers, numClusters, &numIters, &sse);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      *bestNumIters = numIters;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
+rep_kmeanspp_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse)
+{
+  
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+  int numIters = 0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = kmeanspp(data_set, numClusters);
+    bkm(data_set, temp_centers, numClusters, &numIters, &sse);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      *bestNumIters = numIters;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
+rep_rand_sel_okm_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse, const double lr_exp)
+{
+  
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+  int numIters = 0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = rand_sel(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+    bkm(data_set, temp_centers, numClusters, &numIters, &sse);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      *bestNumIters = numIters;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
+rep_maximin_okm_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse, const double lr_exp)
+{
+  
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+  int numIters = 0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = maximin(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+    bkm(data_set, temp_centers, numClusters, &numIters, &sse);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      *bestNumIters = numIters;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
+Data_Set*
+rep_kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, const int numReps, int* bestNumIters, double* best_sse, const double lr_exp)
+{
+  
+  Data_Set *temp_centers;
+  Data_Set *centers = alloc_data_set(numClusters, data_set->num_dims, 0);
+  *best_sse = DBL_MAX;
+  double sse = 0.0;
+  int numIters = 0;
+
+  for (int i = 0; i < numReps; i++)
+  {
+    temp_centers = kmeanspp(data_set, numClusters);
+    okm(data_set, temp_centers, numClusters, lr_exp);
+    bkm(data_set, temp_centers, numClusters, &numIters, &sse);
+
+    if (sse < *best_sse)
+    {
+      *best_sse = sse;
+      *bestNumIters = numIters;
+      memcpy(centers->data[0], temp_centers->data[0], numClusters * data_set->num_dims * sizeof(double));
+    }
+
+    free_data_set(temp_centers);
+  }
+
+  return centers;
+}
+
 
 
 int 
@@ -743,9 +949,8 @@ main(int argc, char *argv[])
     const int numClusters[] = { 8, 6, 2, 3, 6, 26, 7, 4, 3, 10 };
     Data_Set *initCenters;
     Data_Set* centers;
-    int rand_sel_bkm_numIters, maximin_bkm_numIters, kmeanspp_bkm_numIters, rand_sel_okm_bkm_numIters, maximin_okm_bkm_numIters, kmeanspp_okm_bkm_numIters, rep_rand_sel_numIters;
-    double rand_sel_bkm_sse, maximin_bkm_sse, kmeanspp_bkm_sse, rand_sel_okm_bkm_sse, maximin_okm_bkm_sse, kmeanspp_okm_bkm_sse, rep_rand_sel_sse;
-    double rand_sel_okm_sse, maximin_okm_sse, kmeanspp_okm_sse;
+    int rand_sel_bkm_numIters, maximin_bkm_numIters, kmeanspp_bkm_numIters, rand_sel_okm_bkm_numIters, maximin_okm_bkm_numIters, kmeanspp_okm_bkm_numIters, rep_rand_sel_bkm_numIters, rep_maximin_bkm_numIters, rep_kmeanspp_bkm_numIters, rep_rand_sel_okm_bkm_numIters, rep_maximin_okm_bkm_numIters, rep_kmeanspp_okm_bkm_numIters;
+    double rand_sel_okm_sse, maximin_okm_sse, kmeanspp_okm_sse, rand_sel_bkm_sse, maximin_bkm_sse, kmeanspp_bkm_sse, rand_sel_okm_bkm_sse, maximin_okm_bkm_sse, kmeanspp_okm_bkm_sse, rep_rand_sel_okm_sse, rep_maximin_okm_sse, rep_kmeanspp_okm_sse, rep_rand_sel_bkm_sse, rep_maximin_bkm_sse, rep_kmeanspp_bkm_sse, rep_rand_sel_okm_bkm_sse, rep_maximin_okm_bkm_sse, rep_kmeanspp_okm_bkm_sse;
     const double lr_exp = 0.5;
     const int numReps = 100;
 
@@ -768,6 +973,7 @@ main(int argc, char *argv[])
 
     // printf("\nSSE (kmeanspp + bkm) = %g\n", kmeanspp_bkm_sse);
 
+    printf("numReps = %d : lr_exp = %f\n", numReps, lr_exp);
 
     for (int i = 0; i < filenamesLength; i++){
         printf("Filename: %s, Number of Clusters: %d\n", filenames[i], numClusters[i]);
@@ -803,13 +1009,39 @@ main(int argc, char *argv[])
         centers = kmeanspp_okm_bkm(data_set, numClusters[i], &kmeanspp_okm_bkm_numIters, &kmeanspp_okm_bkm_sse, lr_exp);
         free_data_set(centers);
 
-        centers = rep_rand_sel_bkm(data_set, numClusters[i], numReps, &rep_rand_sel_numIters, &rep_rand_sel_sse);
+        centers = rep_rand_sel_okm(data_set, numClusters[i], numReps, &rep_rand_sel_okm_numIters, &rep_rand_sel_okm_sse, lr_exp);
+        free_data_set(centers);
+
+        centers = rep_maximin_okm(data_set, numClusters[i], numReps, &rep_maximin_okm_numIters, &rep_maximin_okm_sse, lr_exp);
+        free_data_set(centers);
+
+        centers = rep_kmeanspp_okm(data_set, numClusters[i], numReps, &rep_kmeanspp_okm_numIters, &rep_kmeanspp_okm_sse, lr_exp);
+        free_data_set(centers);
+
+        centers = rep_rand_sel_bkm(data_set, numClusters[i], numReps, &rep_rand_sel_bkm_numIters, &rep_rand_sel_bkm_sse);
+        free_data_set(centers);
+
+        centers = rep_maximin_bkm(data_set, numClusters[i], numReps, &rep_maximin_bkm_numIters, &rep_maximin_bkm_sse);
+        free_data_set(centers);
+
+        centers = rep_kmeanspp_bkm(data_set, numClusters[i], numReps, &rep_kmeanspp_bkm_numIters, &rep_kmeanspp_bkm_sse);
+        free_data_set(centers);
+
+        centers = rep_rand_sel_okm_bkm(data_set, numClusters[i], numReps, &rep_rand_sel_okm_bkm_numIters, &rep_rand_sel_okm_bkm_sse, lr_exp);
+        free_data_set(centers);
+
+        centers = rep_maximin_okm_bkm(data_set, numClusters[i], numReps, &rep_maximin_okm_bkm_numIters, &rep_maximin_okm_bkm_sse, lr_exp);
+        free_data_set(centers);
+
+        centers = rep_kmeanspp_okm_bkm(data_set, numClusters[i], numReps, &rep_kmeanspp_okm_bkm_numIters, &rep_kmeanspp_okm_bkm_sse, lr_exp);
         free_data_set(centers);
 
         printf("SSE (rand_sel + okm) = %g : SSE (maximin + okm) = %g : SSE (kmeanspp + okm) = %g\n", rand_sel_okm_sse, maximin_okm_sse, kmeanspp_okm_sse);
         printf("SSE (rand_sel + bkm) = %g [%d iters]: SSE (maximin + bkm) = %g [%d iters] : SSE (kmeanspp + bkm) = %g [%d iters]\n", rand_sel_bkm_sse, rand_sel_bkm_numIters, maximin_bkm_sse, maximin_bkm_numIters, kmeanspp_bkm_sse, kmeanspp_bkm_numIters);
         printf("SSE (rand_sel + okm + bkm) = %g [%d iters]: SSE (maximin + okm + bkm) = %g [%d iters]: SSE (kmeanspp + okm + bkm) = %g [%d iters]\n", rand_sel_okm_bkm_sse, rand_sel_okm_bkm_numIters, maximin_okm_bkm_sse, maximin_okm_bkm_numIters, kmeanspp_okm_bkm_sse, kmeanspp_okm_bkm_numIters);
-        printf("SSE (rep_rand_sel) = %g [%d iters][%d reps]\n", rep_rand_sel_sse, rep_rand_sel_numIters, numReps);
+        printf("SSE (rep_rand_sel + okm = %g : SSE (rep_maximin + okm) = %g : SSE (rep_kmeanspp + okm) = %g\n", rep_rand_sel_okm_sse, rep_maximin_okm_sse, rep_kmeanspp_okm_sse);
+        printf("SSE (rep_rand_sel + bkm) = %g [%d iters]: SSE (rep_maximin + bkm) = %g [%d iters] : SSE (rep_kmeanspp + bkm) = %g [%d iters]\n", rep_rand_sel_bkm_sse, rep_rand_sel_bkm_numIters, rep_maximin_bkm_sse, rep_maximin_bkm_numIters, rep_kmeanspp_bkm_sse, rep_kmeanspp_bkm_numIters);
+        printf("SSE (rep_rand_sel + okm + bkm) = %g [%d iters]: SSE (rep_maximin + okm + bkm) = %g [%d iters]: SSE (rep_kmeanspp + okm + bkm) = %g [%d iters]\n", rep_rand_sel_okm_bkm_sse, rep_rand_sel_okm_bkm_numIters, rep_maximin_okm_bkm_sse, rep_maximin_okm_bkm_numIters, rep_kmeanspp_okm_bkm_sse, rep_kmeanspp_okm_bkm_numIters);
         
         free_data_set(data_set);
         printf("Done processing file: %s\n\n", filenames[i]);
