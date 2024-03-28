@@ -44,6 +44,8 @@ typedef struct
 #define MAX_CHAR 32
 #define MAX_DIST 195075
 
+int POW2[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536 };
+
 //To allocate memory for the 'double **data' variable, you need the following function:
 double **
 alloc_double_2d ( const int num_points, const int num_dims )
@@ -481,6 +483,66 @@ bkm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, int* nu
   free( size );
   free ( member );
 
+}
+
+Data_Set*
+compute_centroid(const Data_Set* data_set, const int numClusters) {
+    double *sum = new double[data_set->num_dims](); // Initialize sum for each dimension
+    Data_Set* centroid = alloc_data_set(numClusters, data_set->num_dims, 0);
+
+    // Calculate sum of each dimension across all data points
+    for (int i = 0; i < data_set->num_points; i++)
+    {
+        for (int j = 0; j < numClusters; j++)
+        {
+            sum[j] += data_set->data[i][j];
+        }
+    }
+
+    // Compute centroid for each dimension
+    for (int j = 0; j < numClusters; j++) 
+    {
+      for (int k = 0; k < data_set->num_dims; k++)
+      {
+        centroid->data[j][k] = sum[j] / data_set->num_points;
+      }
+    }
+
+    delete[] sum;
+    return centroid;
+}
+
+/*Incremental Batch K-Means*/
+
+void
+ibkm(const Data_Set* data_set, const int numClusters, int* numIters, double* sse)
+{
+  int num_splits, index;
+  int numChanges, minIndex, mySize;
+  double minDist, dist;
+  num_splits = ( int ) ( log ( numClusters ) / log ( 2 ) + 0.5 ); /* round */
+
+  Data_Set *temp = alloc_data_set(numClusters, data_set->num_dims, 0);
+  int *size = (int *) malloc ( numClusters * sizeof ( int ) );
+  int *member = ( int * ) calloc ( data_set->num_points, sizeof ( int ) );
+
+  *numIters = 0;
+
+  memcpy(temp->data[0], data_set->data[5], data_set->num_dims * sizeof(double)); //replace this with centroid
+
+  /*Start iteration counter (t) = 0*/
+  for ( int t = 0; t < num_splits; t++ )
+  {
+    for ( int n = POW2[t] - 1; n < POW2[t + 1] - 1; n++ )
+    {
+      for (int j = 0; j < numClusters; j++)
+      {
+        index = 2 * n + 1;
+        temp->data[index][j] = data_set->data[j];
+      }
+    }
+  }
+  
 }
 
 
