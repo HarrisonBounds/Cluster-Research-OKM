@@ -1070,7 +1070,7 @@ rep_kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, const int 
 
 void print_stats(const Dbl_Stats *init_sse_stats, const Dbl_Stats *fin_sse_stats, const Int_Stats *num_iters_stats)
 {
-  printf("init_sse: [%.2g, %.2g], %.2g +/- %.2g ; fin_sse: [%.2g, %.2g] %.2g +/- %.2g ; num_iters: [%d, %d], %.2g +/- %.2g\n", init_sse_stats->min, init_sse_stats->max, init_sse_stats->mean, init_sse_stats->std, fin_sse_stats->min, fin_sse_stats->max, fin_sse_stats->mean, fin_sse_stats->std, num_iters_stats->min, num_iters_stats->max, num_iters_stats->mean, num_iters_stats->std);
+  printf("init_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nfina_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nnum_iter: [%d, %d], %.2g +/- %.2g\n", init_sse_stats->min, init_sse_stats->max, init_sse_stats->mean, init_sse_stats->std, fin_sse_stats->min, fin_sse_stats->max, fin_sse_stats->mean, fin_sse_stats->std, num_iters_stats->min, num_iters_stats->max, num_iters_stats->mean, num_iters_stats->std);
 }
 
 
@@ -1099,60 +1099,59 @@ main(int argc, char *argv[])
   for ( int i = 0; i < filenamesLength; i++)
   {
     printf("\nFilename: %s, # Clusters: %d\n", filenames[i], numClusters[i]);
-    printf("==========================================\n");
     Data_Set* data_set = load_data_set(filenames[i]);
     
     run = rep_rand_sel_okm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_rand_sel_okm: ");
+    printf("rep_rand_sel_okm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_maximin_okm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_maximin_okm: ");
+    printf("\nrep_maximin_okm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_kmeanspp_okm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_kmeanspp_okm: ");
+    printf("\nrep_kmeanspp_okm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run); 
 
     run = rep_rand_sel_bkm(data_set, numClusters[i], numReps, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_rand_sel_bkm: ");
+    printf("\nrep_rand_sel_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
     
     run = rep_maximin_bkm(data_set, numClusters[i], numReps, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_maximin_bkm: ");
+    printf("\nrep_maximin_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_kmeanspp_bkm(data_set, numClusters[i], numReps, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_kmeanspp_bkm: ");
+    printf("\nrep_kmeanspp_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_rand_sel_okm_bkm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_rand_sel_okm_bkm: ");
+    printf("\nrep_rand_sel_okm_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_maximin_okm_bkm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_maximin_okm_bkm: ");
+    printf("\nrep_maximin_okm_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
     run = rep_kmeanspp_okm_bkm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    printf("rep_kmeanspp_okm_bkm: ");
+    printf("\nrep_kmeanspp_okm_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
     free(run);
 
