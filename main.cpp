@@ -397,19 +397,22 @@ data_set_compare(const Data_Set* data_set_a, Data_Set* data_set_b)
   }
 }
 
-void 
-min_max_normalization(const Data_Set* data_set)
+Data_Set* 
+min_max_normalize(const Data_Set* data_set, const int numClusters)
 {
+  Data_Set* norm_data_set = alloc_data_set(numClusters, data_set->num_dims, 0);
 
-  double *min = ( double * ) calloc ( data_set->num_dims, sizeof ( double ) );
-  double *max = ( double * ) calloc ( data_set->num_dims, sizeof ( double ) );
+  double *min = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
+  double *max = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
+  double *range = ( double * ) malloc ( data_set->num_dims * sizeof ( double ) );
+
 
   for (int k = 0; k < data_set->num_dims; k++)
   {
     min[k] = DBL_MAX;
     max[k] = -DBL_MAX;
   }
-
+ 
   /*Find min and max of each D attribute*/
   for(int i = 0; i < data_set->num_points; i++)
   {
@@ -425,18 +428,26 @@ min_max_normalization(const Data_Set* data_set)
       }
     }
   }
+  
+  for(int k = 0; k < data_set->num_dims; k++)
+  {
+    range[k] = max[k] - min[k];
+  }
 
   /*Normalize attribute values*/
   for(int i = 0; i < data_set->num_points; i++)
   {
     for(int k = 0; k < data_set->num_dims; k++)
     {
-      data_set->data[i][k] = (data_set->data[i][k] - min[k]) / (max[k] - min[k]);
+      norm_data_set->data[i][k] = (data_set->data[i][k] - min[k]) / range[k];
     }
   }
 
   free(min);
   free(max);
+  free(range);
+
+  return norm_data_set;
 }
 
 /* Batch k-means Algorithm */
@@ -526,6 +537,48 @@ bkm(const Data_Set* data_set, double **clusters, const int numClusters, int* num
 
 }
 
+/*Online K-Means Algorithm*/
+void
+okm(const Data_Set* data_set, double** clusters, const int numClusters, const double lr_exp, std::mt19937& gen)
+{
+  int minIndex, rand_data_point;
+  double minDist, dist, learningRate;
+
+  int *size = ( int * ) calloc ( numClusters, sizeof ( int ) );
+
+  std::uniform_int_distribution<> rand_index(0, data_set->num_points - 1);
+
+  for (int i = 0 ; i < data_set->num_points; i++)
+  {
+    rand_data_point = rand_index(gen);
+    
+    minDist = DBL_MAX;
+    minIndex = 0;
+    
+    for (int j = 0; j < numClusters; j++)
+    {
+
+      dist = sqr_euc_dist(clusters[j], data_set->data[rand_data_point], data_set->num_dims);
+      if (dist < minDist)
+      {
+        minDist = dist;
+        minIndex = j;
+      }
+    }
+
+    learningRate = pow(++size[minIndex], -lr_exp);
+    
+    for (int k = 0; k < data_set->num_dims; k++)
+    {
+      clusters[minIndex][k] += learningRate * ( data_set->data[rand_data_point][k] - clusters[minIndex][k]);
+    } 
+
+  } 
+
+  free( size );
+}
+
+
 double*
 comp_centroid(const Data_Set* data_set) {
     double *sum = ( double * ) calloc ( data_set->num_dims, sizeof ( double ) ); // Initialize sum for each dimension
@@ -552,7 +605,7 @@ comp_centroid(const Data_Set* data_set) {
 
 /*Incremental Batch K-Means*/
 Data_Set*
-ibkm(const Data_Set* data_set, const int numClusters, const int numReps)
+ibkm(const Data_Set* data_set, const int numClusters)
 {
   int num_splits, index;
   int numIters = 0;
@@ -560,11 +613,11 @@ ibkm(const Data_Set* data_set, const int numClusters, const int numReps)
   double eps = 0.255;
   num_splits = ( int ) ( log ( numClusters ) / log ( 2 ) + 0.5 ); /* round */
 
-  Data_Set *temp = alloc_data_set(2 * numClusters - 1, data_set->num_dims, 0);
-  Data_Set *cluster = alloc_data_set(numClusters, data_set->num_dims, 0);
+  Data_Set *temp_center = alloc_data_set(2 * numClusters - 1, data_set->num_dims, 0);
+  Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
   double *centroid = comp_centroid ( data_set );
 
-  memcpy(temp->data[0], centroid, data_set->num_dims * sizeof(double));
+  memcpy(temp_center->data[0], centroid, data_set->num_dims * sizeof(double));
 
  
   /*Start iteration counter (t) = 0*/
@@ -577,17 +630,17 @@ ibkm(const Data_Set* data_set, const int numClusters, const int numReps)
       index = 2 * n + 1;
       for (int k = 0; k < data_set->num_dims; k++)
       {
-        double node_val = temp->data[n][k];
+        double node_val = temp_center->data[n][k];
 
         /* Left child */
-        temp->data[index][k] = node_val;
+        temp_center->data[index][k] = node_val;
 
         /* Right child */
-        temp->data[index + 1][k] = node_val + eps;
+        temp_center->data[index + 1][k] = node_val + eps;
       }
     }
     /* Refine the new centers using batch k-means */
-    bkm ( data_set, temp->data + POW2[t + 1] - 1, POW2[t+1], &numIters, &sse );
+    bkm ( data_set, temp_center->data + POW2[t + 1] - 1, POW2[t+1], &numIters, &sse );
     
   }
   
@@ -595,59 +648,68 @@ ibkm(const Data_Set* data_set, const int numClusters, const int numReps)
   {
     for (int k = 0; k < data_set->num_dims; k++)
     {
-      cluster->data[j][k] = temp->data[j + numClusters - 1][k];
+      center->data[j][k] = temp_center->data[j + numClusters - 1][k];
     }
   }
 
   printf("fin_sse: %.2g\n", sse);
-  free_data_set ( temp );
+  free_data_set ( temp_center );
   free ( centroid );
 
-  return cluster;
+  return center;
   
 }
 
-
-/*Online K-Means Algorithm*/
-void
-okm(const Data_Set* data_set, Data_Set* clusters, const int numClusters, const double lr_exp, std::mt19937& gen)
+/*Incremental Online K-Means*/
+Data_Set*
+iokm(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
 {
-  int minIndex, rand_data_point;
-  double minDist, dist, learningRate;
+  int num_splits, index;
 
-  int *size = ( int * ) calloc ( numClusters, sizeof ( int ) );
+  num_splits = ( int ) ( log ( numClusters ) / log ( 2 ) + 0.5 ); /* round */
 
-  std::uniform_int_distribution<> rand_index(0, data_set->num_points - 1);
+  Data_Set *temp_center = alloc_data_set(2 * numClusters - 1, data_set->num_dims, 0);
+  Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
+  double *centroid = comp_centroid ( data_set );
 
-  for (int i = 0 ; i < data_set->num_points; i++)
+  memcpy(temp_center->data[0], centroid, data_set->num_dims * sizeof(double));
+  
+  for ( int t = 0; t < num_splits; t++ )
   {
-    rand_data_point = rand_index(gen);
-    
-    minDist = DBL_MAX;
-    minIndex = 0;
-    
-    for (int j = 0; j < numClusters; j++)
+    for ( int n = POW2[t] - 1; n < POW2[t + 1] - 1; n++ )
     {
-
-      dist = sqr_euc_dist(clusters->data[j], data_set->data[rand_data_point], data_set->num_dims);
-      if (dist < minDist)
+      index = 2 * n + 1;
+      for (int k = 0; k < data_set->num_dims; k++)
       {
-        minDist = dist;
-        minIndex = j;
+        double node_val = temp_center->data[n][k];
+
+        /*Left child*/
+        temp_center->data[index][k] = node_val;
+
+        /*Right child*/
+        temp_center->data[index+1][k] = node_val;
       }
     }
 
-    learningRate = pow(++size[minIndex], -lr_exp);
+    okm(data_set, temp_center->data + POW2[t+1] - 1, POW2[t+1], lr_exp, gen);
     
+  }
+
+  for (int j = 0; j < numClusters; j++)
+  {
     for (int k = 0; k < data_set->num_dims; k++)
     {
-      clusters->data[minIndex][k] += learningRate * ( data_set->data[rand_data_point][k] - clusters->data[minIndex][k]);
-    } 
+      center->data[j][k] = temp_center->data[j + numClusters - 1][k];
+    }
+  }
 
-  } 
+  free(temp_center);
 
-  free( size );
+  return center;
+
 }
+
+
 
 void
 comp_stats ( const Run *run, Dbl_Stats *init_sse_stats, Dbl_Stats *fin_sse_stats, Int_Stats *num_iters_stats)
@@ -874,7 +936,7 @@ kmeanspp_okm(const Data_Set *data_set, const int numClusters, const double lr_ex
   Data_Set *centers;
 
   centers = kmeanspp(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
 
   return centers;
 }
@@ -885,7 +947,7 @@ rand_sel_okm(const Data_Set *data_set, const int numClusters, const double lr_ex
   Data_Set *centers;
 
   centers = rand_sel(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
 
   return centers;
 }
@@ -896,7 +958,7 @@ maximin_okm(const Data_Set *data_set, const int numClusters, const double lr_exp
   Data_Set *centers;
 
   centers = maximin(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
 
   return centers;
 }
@@ -940,7 +1002,7 @@ rand_sel_okm_bkm(const Data_Set *data_set, const int numClusters, int* numIters,
   Data_Set *centers;
 
   centers = rand_sel(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
   bkm(data_set, centers->data, numClusters, numIters, sse);
 
   return centers;
@@ -952,7 +1014,7 @@ maximin_okm_bkm(const Data_Set *data_set, const int numClusters, int* numIters, 
   Data_Set *centers;
 
   centers = maximin(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
   bkm(data_set, centers->data, numClusters, numIters, sse);
 
   return centers;
@@ -964,7 +1026,7 @@ kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, int* numIters,
   Data_Set *centers;
 
   centers = kmeanspp(data_set, numClusters, gen);
-  okm(data_set, centers, numClusters, lr_exp, gen);
+  okm(data_set, centers->data, numClusters, lr_exp, gen);
   bkm(data_set, centers->data, numClusters, numIters, sse);
 
   return centers;
@@ -981,7 +1043,7 @@ rep_rand_sel_okm(const Data_Set *data_set, const int numClusters, const int numR
     temp_centers = rand_sel(data_set, numClusters, gen);
     run->init_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
-    okm(data_set, temp_centers, numClusters, lr_exp, gen);
+    okm(data_set, temp_centers->data, numClusters, lr_exp, gen);
     run->fin_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
     //OKM always iterates once
@@ -1004,7 +1066,7 @@ rep_maximin_okm(const Data_Set *data_set, const int numClusters, const int numRe
     temp_centers = maximin(data_set, numClusters, gen);
     run->init_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
-    okm(data_set, temp_centers, numClusters, lr_exp, gen);
+    okm(data_set, temp_centers->data, numClusters, lr_exp, gen);
     run->fin_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
     //OKM always iterates once
@@ -1027,7 +1089,7 @@ rep_kmeanspp_okm(const Data_Set *data_set, const int numClusters, const int numR
     temp_centers = kmeanspp(data_set, numClusters, gen);
     run->init_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
-    okm(data_set, temp_centers, numClusters, lr_exp, gen);
+    okm(data_set, temp_centers->data, numClusters, lr_exp, gen);
     run->fin_sse[i] = calc_sse(data_set, temp_centers, numClusters);
 
     //OKM always iterates once
@@ -1124,7 +1186,7 @@ rep_rand_sel_okm_bkm(const Data_Set *data_set, const int numClusters, const int 
   for (int i = 0; i < numReps; i++)
   {
     centers = rand_sel(data_set, numClusters, gen);
-    okm(data_set, centers, numClusters, lr_exp, gen);
+    okm(data_set, centers->data, numClusters, lr_exp, gen);
 
     run->init_sse[i] = calc_sse(data_set, centers, numClusters);
     bkm(data_set, centers->data, numClusters, &numIters, &sse);
@@ -1150,7 +1212,7 @@ rep_maximin_okm_bkm(const Data_Set *data_set, const int numClusters, const int n
   for (int i = 0; i < numReps; i++)
   {
     centers = maximin(data_set, numClusters, gen);
-    okm(data_set, centers, numClusters, lr_exp, gen);
+    okm(data_set, centers->data, numClusters, lr_exp, gen);
 
     run->init_sse[i] = calc_sse(data_set, centers, numClusters);
     bkm(data_set, centers->data, numClusters, &numIters, &sse);
@@ -1176,7 +1238,7 @@ rep_kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, const int 
   for (int i = 0; i < numReps; i++)
   {
     centers = kmeanspp(data_set, numClusters, gen);
-    okm(data_set, centers, numClusters, lr_exp, gen);
+    okm(data_set, centers->data, numClusters, lr_exp, gen);
     
     run->init_sse[i] = calc_sse(data_set, centers, numClusters);
     bkm(data_set, centers->data, numClusters, &numIters, &sse);
@@ -1194,8 +1256,6 @@ void print_stats(const Dbl_Stats *init_sse_stats, const Dbl_Stats *fin_sse_stats
 {
   printf("init_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nfina_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nnum_iter: [%d, %d], %.2g +/- %.2g\n", init_sse_stats->min, init_sse_stats->max, init_sse_stats->mean, init_sse_stats->std, fin_sse_stats->min, fin_sse_stats->max, fin_sse_stats->mean, fin_sse_stats->std, num_iters_stats->min, num_iters_stats->max, num_iters_stats->mean, num_iters_stats->std);
 }
-
-
 
 int 
 main(int argc, char *argv[])
@@ -1220,6 +1280,7 @@ main(int argc, char *argv[])
   std::mt19937 gen(rd());
 
   double sse = 0.0;
+  double iokm_sse = 0.0;
   int numIters = 0;
 
   Data_Set* clusters;
@@ -1232,7 +1293,13 @@ main(int argc, char *argv[])
     Data_Set* data_set = load_data_set(filenames[i]);
 
     printf("IBKM:\n");
-    ibkm(data_set, numClusters[i], numReps);
+    ibkm(data_set, numClusters[i]);
+
+    printf("IOKM:\n");
+    clusters = iokm(data_set, numClusters[i], lr_exp, gen);
+    iokm_sse = calc_sse(data_set, clusters, numClusters[i]);
+    printf("fin_sse: %.2g\n", iokm_sse);
+    free_data_set(clusters);
 
     printf("BKM:\n");
     clusters = kmeanspp(data_set, numClusters[i], gen);
