@@ -709,6 +709,81 @@ iokm(const Data_Set* data_set, const int numClusters, const double lr_exp, std::
 
 }
 
+/*Incremental Online K-Means*/
+Data_Set*
+iokm_gen(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
+{
+  int num_levels, index, t;
+
+  num_levels = ( int ) ceil ( log ( numClusters ) / log ( 2 ) );
+
+  Data_Set *temp_center = alloc_data_set ( POW2[num_levels] - 1 + numClusters, data_set->num_dims, 0);
+  Data_Set *center = alloc_data_set(numClusters, data_set->num_dims, 0);
+  double *centroid = comp_centroid ( data_set );
+
+  memcpy(temp_center->data[0], centroid, data_set->num_dims * sizeof(double));
+  
+  /* Split levels 0, 1, ..., num_levels - 2 */
+  for ( t = 0; t < num_levels - 1; t++ )
+  {
+    //printf ( "Level %d: first split %d leaves with indices %d thru %d and then ", t, POW2[t], POW2[t] - 1, POW2[t+1] - 2 );
+    for ( int n = POW2[t] - 1; n < POW2[t+1] - 1; n++ )
+    {
+      index = 2 * n + 1;
+      for (int k = 0; k < data_set->num_dims; k++)
+      {
+        double node_val = temp_center->data[n][k];
+
+        /*Left child*/
+        temp_center->data[index][k] = node_val;
+
+        /*Right child*/
+        temp_center->data[index+1][k] = node_val;
+      }
+    }
+
+    /* Refine the last POW2[t+1] leaves/centers */
+    //printf ( "refine %d leaves with indices %d thru %d\n", POW2[t+1], POW2[t+1] - 1, POW2[t+2] - 2 );
+    okm(data_set, temp_center->data + POW2[t+1] - 1, POW2[t+1], lr_exp, gen);
+  }
+
+  /* Split the last level (t = num_levels - 1) */
+  int half = ( int ) floor ( numClusters / 2 );
+  //printf ( "Level %d: first split %d leaves with indices %d thru %d and then ", t, half, POW2[t] - 1, POW2[t] - 2 + half );
+  for ( int n = POW2[t] - 1; n < POW2[t] - 1 + half; n++ )
+   {
+    index = 2 * n + 1;
+    for (int k = 0; k < data_set->num_dims; k++)
+    {
+      double node_val = temp_center->data[n][k];
+
+      /*Left child*/
+      temp_center->data[index][k] = node_val;
+
+      /*Right child*/
+      temp_center->data[index+1][k] = node_val;
+    }
+   }
+
+  /* Refine all K leaves/centers */
+  //printf ( "refine %d leaves with indices %d thru %d\n", numClusters, POW2[t+1] - 1 - ( numClusters - 2 * half ), POW2[t+1] + 2 * half - 2 );
+  okm(data_set, temp_center->data + POW2[t+1] - 1 - ( numClusters - 2 * half ), numClusters, lr_exp, gen);
+
+  /* Save the last K centers */
+  for (int j = 0; j < numClusters; j++)
+  {
+    for (int k = 0; k < data_set->num_dims; k++)
+    {
+      center->data[j][k] = temp_center->data[j + numClusters - 1][k];
+    }
+  }
+  
+  free(temp_center);
+
+  return center;
+
+}
+
 
 
 void
@@ -1260,12 +1335,10 @@ void print_stats(const Dbl_Stats *init_sse_stats, const Dbl_Stats *fin_sse_stats
 int 
 main(int argc, char *argv[])
 {
-  const char* filenames[] = { "data/dim032.txt", "data/dim064.txt", "data/dim128.txt", "data/dim256.txt", "data/dim512.txt", "data/dim1024.txt"};
-    //"data/s1.txt", "data/s2.txt", "data/s3.txt", "data/s4.txt", "data/a1.txt", "data/a2.txt", "data/a3.txt", 
+  const char* filenames[] = { "data/s1.txt", "data/s2.txt", "data/s3.txt", "data/s4.txt", "data/a1.txt", "data/a2.txt", "data/a3.txt", "data/dim032.txt", "data/dim064.txt", "data/dim128.txt", "data/dim256.txt", "data/dim512.txt", "data/dim1024.txt"};
   
   int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
-  const int numClusters[] = { 16, 16, 16, 16, 16, 16 };
-    //15, 15, 15, 15, 20, 35, 50, 
+  const int numClusters[] = { 15, 15, 15, 15, 20, 35, 50, 16, 16, 16, 16, 16, 16 };
 
   Run* run;
   Dbl_Stats init_sse_stats;
@@ -1281,17 +1354,18 @@ main(int argc, char *argv[])
 
   double sse = 0.0;
   double iokm_sse = 0.0;
+  double okm_sse = 0.0;
   int numIters = 0;
 
   Data_Set* clusters;
 
-  printf("# Reps = %d, lr_exp = %.2g\n", numReps, lr_exp);
 
   for ( int i = 0; i < filenamesLength; i++)
   {
     printf("\nFilename: %s, # Clusters: %d\n", filenames[i], numClusters[i]);
     Data_Set* data_set = load_data_set(filenames[i]);
 
+    /*
     printf("IBKM:\n");
     ibkm(data_set, numClusters[i]);
 
@@ -1299,16 +1373,26 @@ main(int argc, char *argv[])
     clusters = iokm(data_set, numClusters[i], lr_exp, gen);
     iokm_sse = calc_sse(data_set, clusters, numClusters[i]);
     printf("fin_sse: %.2g\n", iokm_sse);
-    free_data_set(clusters);
+    free_data_set(clusters);*/
 
     printf("BKM:\n");
     clusters = kmeanspp(data_set, numClusters[i], gen);
     bkm(data_set, clusters->data, numClusters[i], &numIters, &sse);
     printf("fin_sse: %.2g\n", sse);
-  
+
+    printf("OKM:\n");
+    clusters = kmeanspp(data_set, numClusters[i], gen);
+    okm(data_set, clusters->data, numClusters[i], lr_exp, gen);
+    okm_sse = calc_sse(data_set, clusters, numClusters[i]);
+    printf("fin_sse: %.2g\n", okm_sse);
+
+    printf("IOKM_GEN:\n");
+    clusters = iokm_gen(data_set, numClusters[i], lr_exp, gen);
+    iokm_sse = calc_sse(data_set, clusters, numClusters[i]);
+    printf("fin_sse: %.2g\n", iokm_sse);
+    free_data_set(clusters);
 
 
-    
     /*
     run = rep_rand_sel_okm(data_set, numClusters[i], numReps, lr_exp, gen);
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
@@ -1362,12 +1446,13 @@ main(int argc, char *argv[])
     comp_stats(run, &init_sse_stats, &fin_sse_stats, &num_iters_stats);
     printf("\nrep_kmeanspp_okm_bkm: \n");
     print_stats(&init_sse_stats, &fin_sse_stats, &num_iters_stats);
-    free(run);*/
+    free(run);
+    */
 
     free_data_set(data_set);
-
   }
 
+  
   printf("DONE");
 
   return 0;
