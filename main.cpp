@@ -606,7 +606,7 @@ comp_centroid(const Data_Set* data_set) {
 
 /*Incremental Batch K-Means*/
 Data_Set*
-ibkm(const Data_Set* data_set, const int numClusters)
+ibkm_pow2(const Data_Set* data_set, const int numClusters)
 {
   int num_splits, index;
   int numIters = 0;
@@ -663,7 +663,7 @@ ibkm(const Data_Set* data_set, const int numClusters)
 
 /*Incremental Online K-Means*/
 Data_Set*
-iokm(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
+iokm_pow2(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
 {
   int num_splits, index;
 
@@ -712,7 +712,7 @@ iokm(const Data_Set* data_set, const int numClusters, const double lr_exp, std::
 
 /*Incremental Online K-Means*/
 Data_Set*
-iokm_gen(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
+iokm(const Data_Set* data_set, const int numClusters, const double lr_exp, std::mt19937& gen)
 {
   int num_levels, index, t;
 
@@ -787,7 +787,7 @@ iokm_gen(const Data_Set* data_set, const int numClusters, const double lr_exp, s
 
 /*Incremental Online K-Means*/
 Data_Set*
-ibkm_gen(const Data_Set* data_set, const int numClusters, double *sse)
+ibkm(const Data_Set* data_set, const int numClusters, double *sse)
 {
   int num_levels, index, t;
   int num_iters;
@@ -856,7 +856,6 @@ ibkm_gen(const Data_Set* data_set, const int numClusters, double *sse)
     }
   }
 
-  printf("fin_sse: %.2g\n", sse);
   free(temp_center);
 
   return center;
@@ -1407,6 +1406,17 @@ rep_kmeanspp_okm_bkm(const Data_Set *data_set, const int numClusters, const int 
   return run;
 }
 
+Data_Set*
+iokm_bkm(const Data_Set *data_set, const int numClusters, int* numIters, double* sse, const double lr_exp, std::mt19937& gen)
+{
+  Data_Set *centers;
+
+  centers = iokm(data_set, numClusters, lr_exp, gen);
+  bkm(data_set, centers->data, numClusters, numIters, sse);
+
+  return centers;
+}
+
 void print_stats(const Dbl_Stats *init_sse_stats, const Dbl_Stats *fin_sse_stats, const Int_Stats *num_iters_stats)
 {
   printf("init_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nfina_sse: [%.2g, %.2g], %.2g +/- %.2g ;\nnum_iter: [%d, %d], %.2g +/- %.2g\n", init_sse_stats->min, init_sse_stats->max, init_sse_stats->mean, init_sse_stats->std, fin_sse_stats->min, fin_sse_stats->max, fin_sse_stats->mean, fin_sse_stats->std, num_iters_stats->min, num_iters_stats->max, num_iters_stats->mean, num_iters_stats->std);
@@ -1415,10 +1425,10 @@ void print_stats(const Dbl_Stats *init_sse_stats, const Dbl_Stats *fin_sse_stats
 int 
 main(int argc, char *argv[])
 {
-  const char* filenames[] = { "data/s1.txt", "data/s2.txt", "data/s3.txt", "data/s4.txt", "data/a1.txt", "data/a2.txt", "data/a3.txt", "data/dim032.txt", "data/dim064.txt", "data/dim128.txt", "data/dim256.txt", "data/dim512.txt", "data/dim1024.txt"};
+  const char* filenames[] = { "data/s1.txt", "data/s2.txt", "data/s3.txt", "data/s4.txt", "data/a1.txt", "data/a2.txt", "data/a3.txt", "data/dim032.txt", "data/dim064.txt", "data/dim128.txt", "data/dim256.txt", "data/dim512.txt", "data/dim1024.txt", "data/ecoli.txt", "data/glass.txt", "data/ionosphere.txt", "data/iris_bezdek.txt", "data/landsat.txt", "data/letter_recognition.txt", "data/segmentation.txt", "data/vehicle.txt", "data/wine.txt", "data/yeast.txt"};
   
   int filenamesLength = sizeof(filenames) / sizeof(filenames[0]);
-  const int numClusters[] = { 15, 15, 15, 15, 20, 35, 50, 16, 16, 16, 16, 16, 16 };
+  const int numClusters[] = { 15, 15, 15, 15, 20, 35, 50, 16, 16, 16, 16, 16, 16, 8, 6, 2, 3, 6, 26, 7, 4, 3, 10 };
 
   Run* run;
   Dbl_Stats init_sse_stats;
@@ -1432,11 +1442,8 @@ main(int argc, char *argv[])
   std::random_device rd;
   std::mt19937 gen(rd());
 
-  double bkm_sse = 0.0;
-  double iokm_sse = 0.0;
-  double ibkm_sse = 0.0;
-  double okm_sse = 0.0;
-  int numIters = 0;
+  double bkm_sse, iokm_sse, ibkm_sse, okm_sse, iokm_bkm_sse = 0.0;
+  int bkm_numIters, iokm_bkm_numIters = 0;
 
   Data_Set* clusters;
 
@@ -1456,15 +1463,15 @@ main(int argc, char *argv[])
     printf("fin_sse: %.2g\n", iokm_sse);
     free_data_set(clusters);*/
 
-    printf("BKM:\n");
+    printf("BKM:");
     auto start = std::chrono::high_resolution_clock::now( );
-    clusters = kmeanspp_bkm(data_set, numClusters[i], &numIters, &bkm_sse, gen);
+    clusters = kmeanspp_bkm(data_set, numClusters[i], &bkm_numIters, &bkm_sse, gen);
     auto stop = std::chrono::high_resolution_clock::now( );
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>( stop - start );
     printf("fin_sse: %.2g [time = %d ms.]\n", bkm_sse, ( int ) elapsed.count ( ) );
     free_data_set(clusters);
 
-    printf("OKM:\n");
+    printf("OKM:");
     start = std::chrono::high_resolution_clock::now( );
     clusters = kmeanspp_okm(data_set, numClusters[i], lr_exp, gen);
     stop = std::chrono::high_resolution_clock::now( );
@@ -1473,21 +1480,30 @@ main(int argc, char *argv[])
     printf("fin_sse: %.2g [time = %d ms.]\n", okm_sse, ( int ) elapsed.count ( ) );
     free_data_set(clusters);
 
-    printf("IBKM:\n");
+    printf("IBKM:");
     start = std::chrono::high_resolution_clock::now( );
-    clusters = ibkm_gen(data_set, numClusters[i], &ibkm_sse);
+    clusters = ibkm(data_set, numClusters[i], &ibkm_sse);
     stop = std::chrono::high_resolution_clock::now( );
     elapsed = std::chrono::duration_cast<std::chrono::milliseconds>( stop - start );
     printf("fin_sse: %.2g [time = %d ms.]\n", ibkm_sse, ( int ) elapsed.count ( ) );
     free_data_set(clusters);
 
-    printf("IOKM:\n");
+    printf("IOKM:");
     start = std::chrono::high_resolution_clock::now( );
-    clusters = iokm_gen(data_set, numClusters[i], lr_exp, gen);
+    clusters = iokm(data_set, numClusters[i], lr_exp, gen);
     stop = std::chrono::high_resolution_clock::now( );
     elapsed = std::chrono::duration_cast<std::chrono::milliseconds>( stop - start );
     iokm_sse = calc_sse(data_set, clusters, numClusters[i]);
     printf("fin_sse: %.2g [time = %d ms.]\n", iokm_sse, ( int ) elapsed.count ( ) );
+    free_data_set(clusters);
+
+    printf("IOKM_BKM:");
+    start = std::chrono::high_resolution_clock::now( );
+    clusters = iokm_bkm(data_set, numClusters[i], &iokm_bkm_numIters, &iokm_bkm_sse, lr_exp, gen);
+    stop = std::chrono::high_resolution_clock::now( );
+    elapsed = std::chrono::duration_cast<std::chrono::milliseconds>( stop - start );
+    iokm_sse = calc_sse(data_set, clusters, numClusters[i]);
+    printf("fin_sse: %.2g [time = %d ms.]\n", iokm_bkm_sse, ( int ) elapsed.count ( ) );
     free_data_set(clusters);
 
 
