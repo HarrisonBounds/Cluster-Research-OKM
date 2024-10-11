@@ -90,10 +90,6 @@ The project employs the Mersenne Twister std::mt19937 for random number generati
 
 The code includes error checking for memory allocation and data loading, ensuring that the program exits gracefully with informative messages if issues arise, such as insufficient data or incorrect file formats.
 
-## OpenCV Integration
-
-OpenCV is not directly involved in this project as it focuses on implementing and analyzing k-means clustering algorithms. However, OpenCV can be integrated for visualizing the clustering results, such as plotting cluster centers or visualizing data points in a reduced dimensional space.
-
 ## Conclusion
 
 The OKM Research Project offers a robust and flexible implementation of various k-means clustering algorithms, enabling comprehensive performance analysis across diverse datasets. By incorporating multiple initialization strategies and algorithmic variations, the project facilitates a deep understanding of k-means clustering dynamics, efficiency, and accuracy. The modular design and detailed statistical analysis support further research and optimization in clustering methodologies.
